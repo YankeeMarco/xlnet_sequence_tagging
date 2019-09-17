@@ -1,9 +1,9 @@
 # XLNet_sequence_tagging
 Using famous language model, xlnet,  to do following tasks:
-  ###sequence tagging
-  ###sequence labelling
-  ###named entity recognition(NER)
-  ###noun extraction
+###sequence tagging
+###sequence labelling
+###named entity recognition(NER)
+###noun extraction
 Firstly now I am working on Noun extraction.
 And welcome forks and PRs.
 Happy xl!
