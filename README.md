@@ -1,10 +1,10 @@
-##XLNet sequence tagging
+## XLNet sequence tagging
 
-####Using **XLNet** For following tasks:
-#####Noun extraction
-#####Named entity extraction(NER)
-#####Sequence labelling or sequence tagging/tagger
-#####Part of speech tagging/tagger
+Using **XLNet** For following tasks:
+Noun extraction ---
+Named entity extraction(NER) ---
+Sequence labelling or sequence tagging/tagger---
+Part of speech tagging/tagger
 
 ## XNLet Introduction
 
