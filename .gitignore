@@ -104,3 +104,5 @@ venv.bak/
 .mypy_cache/
 # tf-files
 *.tf_record
+*.iml
+*.xml
