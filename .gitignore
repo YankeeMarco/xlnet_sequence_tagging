@@ -106,3 +106,4 @@ venv.bak/
 *.tf_record
 *.iml
 *.xml
+*.idea
