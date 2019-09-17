@@ -8,6 +8,9 @@ Part of speech tagging/tagger
 
 Using the xlnet_data directory as sequence labelling dataset
 
+For example, run the scipts using:
+/home/dev/.conda/envs/tf13py2/bin/python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py  --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json  --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model --model_dir /home/dev/Documents/xlnet_models/finetuned/ --data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/  --do_train True --save_steps 2 --output_dir /home/dev/Documents/xlnet_models/output_dir
+
 ## XNLet Introduction
 
 **XLNet** is a new unsupervised language representation learning method based on a novel generalized permutation language modeling objective. Additionally, XLNet employs [Transformer-XL](https://arxiv.org/abs/1901.02860) as the backbone model, exhibiting excellent performance for language tasks involving long context. Overall, XLNet achieves state-of-the-art (SOTA) results on various downstream language tasks including question answering, natural language inference, sentiment analysis, and document ranking.
