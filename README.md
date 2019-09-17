@@ -1,4 +1,12 @@
-## Introduction
+##XLNet sequence tagging
+
+####Using **XLNet** For following tasks:
+#####Noun extraction
+#####Named entity extraction(NER)
+#####Sequence labelling or sequence tagging/tagger
+#####Part of speech tagging/tagger
+
+## XNLet Introduction
 
 **XLNet** is a new unsupervised language representation learning method based on a novel generalized permutation language modeling objective. Additionally, XLNet employs [Transformer-XL](https://arxiv.org/abs/1901.02860) as the backbone model, exhibiting excellent performance for language tasks involving long context. Overall, XLNet achieves state-of-the-art (SOTA) results on various downstream language tasks including question answering, natural language inference, sentiment analysis, and document ranking.
 
