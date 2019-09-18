@@ -13,8 +13,9 @@ from absl import flags
 import os
 import re
 from gen_tags_4_pieces import gen_tags4piece
+from tensorflow.python import debug as tf_debug
 
-os.chdir(os.path.expanduser("~") + "/Documents/xlnet-master")
+os.chdir(os.path.expanduser("~") + "/Documents/xlnet_sequence_tagging")
 import csv
 import collections
 import numpy as np
@@ -322,7 +323,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training,
         for name in list(example.keys()):
             t = example[name]
             if t.dtype == tf.int64:
-                t = tf.cast(t, tf.int32)
+                t = tf.debugging.assert_all_finite(t=tf.cast(t, tf.int32), msg="&&&&&&&&the tensor got null or infinite")
             example[name] = t
 
         return example
@@ -532,13 +533,16 @@ def main(_):
             random.shuffle(train_examples)
             file_based_convert_examples_to_features_ner(
                 train_examples, tokenize_fn, train_file)
-
+        # hook = tf_debug.TensorBoardDebugHook(grpc_debug_server_addresses="localhost:2333")
+        # hook = tf_debug.LocalCLIDebugHook(ui_type="readline")
+        hook = tf_debug.LocalCLIDebugHook()
+        # hook = tf_debug.GrpcDebugHook()
         train_input_fn = file_based_input_fn_builder(
             input_file=train_file,
             seq_length=FLAGS.max_seq_length,
             is_training=True,
             drop_remainder=True)
-        estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)
+        estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps, hooks=[hook])
 
     if FLAGS.do_eval:
         eval_examples = get_examples_ner(FLAGS.data_dir, FLAGS.eval_split)
