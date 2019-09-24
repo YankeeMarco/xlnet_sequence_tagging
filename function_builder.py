@@ -5,10 +5,13 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import sys
+from tensorflow import print as tf_print
 import os
 import tensorflow as tf
 import modeling
 import xlnet
+from tensorflow.contrib.layers.python.layers import initializers
 
 
 def construct_scalar_host_call(
@@ -354,10 +357,18 @@ def get_qa_outputs(FLAGS, features, is_training):
     return return_dict
 
 
-def get_ner_loss(FLAGS, features, is_training, lengths):
+def get_ner_loss(FLAGS, features, is_training):  # , lengths):
     """Loss for downstream sequence labelling such as NER."""
 
     bsz_per_core = tf.shape(features["input_ids"])[0]
+
+    input_ids = features["input_ids"]
+    print("&&&&&&&&&&%%%%%%%%% the input_ids shape is ", input_ids.shape)
+    used = tf.sign(tf.abs(input_ids))
+    print("&&&&&&&&&&%%%%%%%%% the used shape is ", used.shape)
+    # [batch_size] 大小的向量，包含了当前batch中的序列长度
+    lengths = tf.reduce_sum(used, reduction_indices=1)
+    print("&&&&&&&&&&%%%%%%%%% lengths shape is ", lengths.shape)
 
     def _transform_features(feature):
         out = tf.reshape(feature, [bsz_per_core, 1, -1])
@@ -369,6 +380,7 @@ def get_ner_loss(FLAGS, features, is_training, lengths):
     seg_id = _transform_features(features["segment_ids"])
     inp_mask = _transform_features(features["input_mask"])
     labels = tf.reshape(features["label_ids"], [bsz_per_core, FLAGS.max_seq_length])
+    print("&&&&&&&&&&%%%%%%%%% labels shape is ", labels.shape)
 
     xlnet_config = xlnet.XLNetConfig(json_path=FLAGS.model_config_path)
     run_config = xlnet.create_run_config(is_training, True, FLAGS)
@@ -379,28 +391,28 @@ def get_ner_loss(FLAGS, features, is_training, lengths):
         input_ids=inp,
         seg_ids=seg_id,
         input_mask=inp_mask)
-    # todo summary = xlnet_model.get_pooled_out(FLAGS.summary_type, FLAGS.use_summ_proj)
     embedded_chars = xlnet_model.get_sequence_output()
-    embedding_dims = 768
+    embedding_dims = embedded_chars.shape[-1]
     num_labels = 2
-    # logits = project_crf_layer(embedded_chars)
-    # loss, trans = crf_layer(logits)
-
-    from tensorflow.contrib.layers.python.layers import initializers
     with tf.variable_scope("logits", reuse=tf.AUTO_REUSE):
         W = tf.get_variable("W", shape=[embedding_dims, num_labels],
                             dtype=tf.float32, initializer=initializers.xavier_initializer())
 
         b = tf.get_variable("b", shape=[num_labels], dtype=tf.float32,
                             initializer=tf.zeros_initializer())
-        output = tf.reshape(embedded_chars,
-                            shape=[-1, embedding_dims])  # [batch_size, embedding_dims]
-        pred = tf.tanh(tf.nn.xw_plus_b(output, W, b))
+        x = tf.reshape(embedded_chars, shape=[-1, embedding_dims])  # [batch_size, embedding_dims]
+        pred = tf.nn.xw_plus_b(x, W, b)
+        print("&&&&&&&&&&%%%%%%%%% the embedded_chars shape is ", embedded_chars.shape)
+        print("&&&&&&&&&&%%%%%%%%% W shape is ", W.shape)
+        print("&&&&&&&&&&%%%%%%%%% b shape is ", b.shape)
+        print("&&&&&&&&&&%%%%%%%%% output shape is ", x.shape)
+        print("&&&&&&&&&&%%%%%%%%% pred shape is ", pred.shape)
         logits = tf.reshape(pred, [-1, FLAGS.max_seq_length, num_labels])
-        trans1 = tf.get_variable(
-            "transitions",
-            shape=[num_labels, num_labels],
-            initializer=initializers.xavier_initializer())
+        print("&&&&&&&&&&%%%%%%%%% logits shape is ", logits.shape)
+        # trans1 = tf.get_variable(
+        #     "transitions",
+        #     shape=[num_labels, num_labels],
+        #     initializer=initializers.xavier_initializer())
         # crf
         log_likelihood, trans = tf.contrib.crf.crf_log_likelihood(
             inputs=logits,

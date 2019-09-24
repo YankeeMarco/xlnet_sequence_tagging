@@ -1,5 +1,5 @@
 ## XLNet sequence tagging
-
+Alarm: these codes are not finished. Please be cautious to use.
 Using **XLNet** For following tasks:
 Noun extraction ---
 Named entity extraction(NER) ---

@@ -38,7 +38,7 @@ from data_utils import SEP_ID, VOCAB_SIZE, CLS_ID
 import model_utils
 import function_builder
 from classifier_utils import PaddingInputExample
-from prepro_utils import preprocess_text
+from prepro_utils import preprocess_text_ner
 
 # Model
 flags.DEFINE_string("model_config_path", default=None,
@@ -180,34 +180,180 @@ class InputExampleNer(object):
         tags: python list of tags
     """
 
-    def __init__(self, sentence, tags):
-        self.sentence = sentence
-        self.tags = tags
+    def __init__(self, rawtext, wordlist, taglist):
+        self.rawtext = rawtext
+        self.wordlist = wordlist
+        self.tags = taglist
 
 
-def get_examples_ner(data_dir, set_flag):
-    examples = []
+def gen_piece(pieces, tokens):
+    for pie in zip(pieces, tokens):
+        yield pie
 
-    cur_dir = os.path.join(data_dir, set_flag)
+
+def create_int_feature(values):
+    f = tf.train.Feature(int64_list=tf.train.Int64List(value=values))
+    return f
+
+
+def create_float_feature(values):
+    f = tf.train.Feature(float_list=tf.train.FloatList(value=values))
+    return f
+
+
+def create_null_tfexample():
+    features = InputFeatures(
+        input_ids=[0] * FLAGS.max_seq_length,
+        input_mask=[1] * FLAGS.max_seq_length,
+        segment_ids=[0] * FLAGS.max_seq_length,
+        label_id=[0] * FLAGS.max_seq_length,
+        is_real_example=False)
+    tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+    return tf_example
+
+
+def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
+    if tf.gfile.Exists(tfrecord_path) and not FLAGS.overwrite_data:
+        return
+    tf.logging.info("Start writing tfrecord %s.", tfrecord_path)
+    writer = tf.python_io.TFRecordWriter(tfrecord_path)
+    # 直接把UD conll files数据转化为raw text， words list ， tag list的形式
+    cur_dir = os.path.join(ud_data_dir, set_flag)
     # print("********************######################cur_dir is {}".format(cur_dir))
+    eval_batch_example_count = 0
     for filename in tf.gfile.ListDirectory(cur_dir):
         cur_path = os.path.join(cur_dir, filename)
         with tf.gfile.Open(cur_path) as f:
             line = f.readline()
-            pieces = []
-            tags = []
+            rawtext = ""
+            wordlist = []
+            taglist = []
+            to_write_len = 0
+            just_written = False
             while line:
-                if re.match(r"^\n$", line):
-                    if len(pieces) > 0:
-                        examples.append(InputExampleNer(" ".join(pieces), " ".join(tags)))
-                        pieces = []
-                        tags = []
-                else:
-                    word, tag = re.split(r"\t", line)
-                    pieces.append(word)
-                    tags.append(tag)
+                if ".conll" in filename:
+                    if re.match(r"^# text = ", line):
+                        rawtext = re.sub(r"^# text = ", "", line)
+                    if len(re.findall(r"\t", line)) > 5:
+                        just_written = False
+                        ll = [i for i in re.split(r"\t", line) if len(i) > 0]
+                        assert len(ll) == 10
+                        word = ll[1]
+                        tag = ll[3]
+                        assert not re.search(r"\s", word)
+                        assert not re.search(r"\s", tag)
+                        wordlist.append(word.strip())
+                        taglist.append(tag.strip())
+                        to_write_len += 1
+                elif "gold_conll" in filename:
+                    if len(re.findall(r"/", re.split(r"\s+", line)[0])) > 2:
+                        just_written = False
+                        ll = [i for i in re.split(r"\t", line) if len(i) > 0]
+                        assert len(ll) == 10
+                        word = ll[3]
+                        tag = ll[4]
+                        assert not re.search(r"\s", word)
+                        assert not re.search(r"\s", tag)
+                        wordlist.append(word.strip())
+                        taglist.append(tag.strip())
+                        if ll[4] != "UH" and re.search(r"^[,\"'\-]$", word):
+                            rawtext = rawtext + word
+                            to_write_len += 1
+                        elif ll[4] != "UH":
+                            rawtext = rawtext + word + " "
+                            to_write_len += 1
+
+                elif re.match(r"^\n$", line) and (just_written is False) and to_write_len > 256:
+                    # pieces = encode_pieces(sp_model, rawtext, return_unicode=False, sample=False)
+                    # tokens = [sp_model.PieceToId(piece) for piece in pieces]
+
+                    pieces, tokens = encode_ids(sp_model, rawtext, sample=False)
+                    assert len(pieces) < 508, "the length of pieces sp_model output is longer than 508"
+                    gen_p = gen_piece(pieces, tokens)
+                    p_tag_list = []
+                    for (word, tag) in zip(wordlist, taglist):
+                        concat_piece = ""
+                        # print("\"" + word + "\"")
+                        while concat_piece != word:
+                            try:
+                                piece, token = gen_p.next()
+                            except Exception as _:
+                                break
+                            # print("piece: |{}|".format(piece))
+                            concat_piece += re.sub(r"▁", "", piece)
+                            if concat_piece == word:
+                                # print("concat_piece:\"" + concat_piece + "\"")
+                                p_tag_list.append(tag)
+                                break
+                            else:
+                                p_tag_list.append(tag)
+                    assert len(p_tag_list) == len(pieces)
+                    input_ids, input_mask, all_seg_ids, all_label_id = [], [], [], []
+
+                    segment_ids = [SEG_ID_A] * len(tokens)
+
+                    tokens.append(SEP_ID)
+                    all_label_id.append(SEP_ID)
+                    segment_ids.append(SEG_ID_A)
+
+                    tokens.append(SEP_ID)
+                    all_label_id.append(SEP_ID)
+                    segment_ids.append(SEG_ID_B)
+
+                    tokens.append(CLS_ID)
+                    all_label_id.append(CLS_ID)
+                    segment_ids.append(SEG_ID_CLS)
+
+                    cur_input_ids = tokens
+                    cur_input_mask = [0] * len(cur_input_ids)
+                    cur_label_ids = all_label_id
+                    if len(cur_input_ids) < FLAGS.max_seq_length:
+                        delta_len = FLAGS.max_seq_length - len(cur_input_ids)
+                        cur_input_ids = [0] * delta_len + cur_input_ids
+                        cur_input_mask = [1] * delta_len + cur_input_mask
+                        cur_label_ids = [0] * delta_len + cur_label_ids
+                        segment_ids = [SEG_ID_PAD] * delta_len + segment_ids
+
+                    assert len(cur_input_ids) == FLAGS.max_seq_length
+                    assert len(cur_input_mask) == FLAGS.max_seq_length
+                    assert len(segment_ids) == FLAGS.max_seq_length
+                    assert len(cur_label_ids) == FLAGS.max_seq_length
+
+                    input_ids.extend(cur_input_ids)
+                    input_mask.extend(cur_input_mask)
+                    all_seg_ids.extend(segment_ids)
+
+                    feature = InputFeatures(
+                        input_ids=input_ids,
+                        input_mask=input_mask,
+                        segment_ids=all_seg_ids,
+                        label_id=cur_label_ids)
+                    features = collections.OrderedDict()
+                    features["input_ids"] = create_int_feature(feature.input_ids)
+                    features["input_mask"] = create_float_feature(feature.input_mask)
+                    features["segment_ids"] = create_int_feature(feature.segment_ids)
+                    features["label_ids"] = create_int_feature(feature.label_id)
+                    features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
+                    tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+                    writer.write(tf_example.SerializeToString())
+                    if set_flag == "eval":
+                        eval_batch_example_count += 1
+                    wordlist = []
+                    taglist = []
+                    to_write_len = 0
+                    rawtext = ""
+                    just_written = not just_written
                 line = f.readline()
-    return examples
+    if set_flag == "eval" and eval_batch_example_count % FLAGS.eval_batch_size != 0:
+        tf_example = create_null_tfexample()
+        for i in range(FLAGS.eval_batch_size - eval_batch_example_count % FLAGS.eval_batch_size):
+            writer.write(tf_example.SerializeToString())
+    # if set_flag == "train" and eval_batch_example_count % FLAGS.train_batch_size != 0:
+    #     tf_example = create_null_tfexample()
+    #     for i in range(FLAGS.train_batch_size - eval_batch_example_count % FLAGS.train_batch_size):
+    #         writer.write(tf_example.SerializeToString())
+
+    writer.close()
 
 
 def convert_single_example_ner(example, tokenize_fn):
@@ -225,6 +371,10 @@ def convert_single_example_ner(example, tokenize_fn):
     pieces, tokens = tokenize_fn(example.sentence)
     all_label_id = gen_tags4piece(pieces, tokens, [i.strip() for i in re.split(r"\s+", example.sentence) if len(i) > 0],
                                   [i.strip() for i in re.split(r"\s+", example.tags) if len(i) > 0])
+    # if random.randrange(0, 100) == 55:
+    for word, tag in zip(pieces, all_label_id):
+        print(word + "\t" + tag + "\n")
+
     segment_ids = [SEG_ID_A] * len(tokens)
 
     tokens.append(SEP_ID)
@@ -323,7 +473,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training,
         for name in list(example.keys()):
             t = example[name]
             if t.dtype == tf.int64:
-                t = tf.debugging.assert_all_finite(t=tf.cast(t, tf.int32), msg="&&&&&&&&the tensor got null or infinite")
+                t = tf.cast(t, tf.int32)
             example[name] = t
 
         return example
@@ -361,15 +511,9 @@ def get_model_fn():
         #### Training or Evaluation
         is_training = (mode == tf.estimator.ModeKeys.TRAIN)
 
-        # total_loss, per_example_loss, logits = function_builder.get_race_loss(
-        #     FLAGS, features, is_training)
-        input_ids = features["input_ids"]
-        used = tf.sign(tf.abs(input_ids))
-        # [batch_size] 大小的向量，包含了当前batch中的序列长度
-        lengths = tf.reduce_sum(used, reduction_indices=1)
         # labels = features['label_ids']
         total_loss, per_example_loss, logits = function_builder.get_ner_loss(
-            FLAGS, features, is_training, lengths=lengths)
+            FLAGS, features, is_training)  # , lengths=lengths)
         print("get model function features :{}".format(features))
         #### Check model parameters
         num_params = sum([np.prod(v.shape) for v in tf.trainable_variables()])
@@ -481,6 +625,31 @@ def encode_ids(sp_model, text, sample=False):
     return pieces, ids
 
 
+def get_examples_ner(data_dir, set_flag):
+    examples = []
+
+    cur_dir = os.path.join(data_dir, set_flag)
+    # print("********************######################cur_dir is {}".format(cur_dir))
+    for filename in tf.gfile.ListDirectory(cur_dir):
+        cur_path = os.path.join(cur_dir, filename)
+        with tf.gfile.Open(cur_path) as f:
+            line = f.readline()
+            pieces = []
+            tags = []
+            while line:
+                if re.match(r"^\n$", line):
+                    if len(pieces) > 0:
+                        examples.append(InputExampleNer(" ".join(pieces), " ".join(tags)))
+                        pieces = []
+                        tags = []
+                else:
+                    word, tag = re.split(r"\t", line)
+                    pieces.append(word)
+                    tags.append(tag)
+                line = f.readline()
+    return examples
+
+
 def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -499,7 +668,7 @@ def main(_):
     sp.Load(FLAGS.spiece_model_file)
 
     def tokenize_fn(text):
-        text = preprocess_text(text, lower=FLAGS.uncased)
+        text = preprocess_text_ner(text, lower=FLAGS.uncased)
         return encode_ids(sp, text)
 
     # TPU Configuration
@@ -524,29 +693,36 @@ def main(_):
             config=run_config)
 
     if FLAGS.do_train:
-        train_file_base = "{}.len-{}.train.tf_record".format(
+        train_file_path_base = "{}.len-{}.train.tf_record".format(
             spm_basename, FLAGS.max_seq_length)
-        train_file = os.path.join(FLAGS.output_dir, train_file_base)
-
-        if not tf.gfile.Exists(train_file) or FLAGS.overwrite_data:
-            train_examples = get_examples_ner(FLAGS.data_dir, "train")
-            random.shuffle(train_examples)
-            file_based_convert_examples_to_features_ner(
-                train_examples, tokenize_fn, train_file)
+        train_file_path = os.path.join(FLAGS.output_dir, train_file_path_base)
+        if not tf.gfile.Exists(train_file_path) or FLAGS.overwrite_data:
+            process_conllu2tfrecord(FLAGS.data_dir, "train", train_file_path, sp)
+        # if not tf.gfile.Exists(train_file_path) or FLAGS.overwrite_data:
+        #     train_examples = get_examples_ner(FLAGS.data_dir, "train")
+        #     random.shuffle(train_examples)
+        #     file_based_convert_examples_to_features_ner(
+        #         train_examples, tokenize_fn, train_file_path)
         # hook = tf_debug.TensorBoardDebugHook(grpc_debug_server_addresses="localhost:2333")
         # hook = tf_debug.LocalCLIDebugHook(ui_type="readline")
-        hook = tf_debug.LocalCLIDebugHook()
+        # hook = tf_debug.LocalCLIDebugHook()
         # hook = tf_debug.GrpcDebugHook()
         train_input_fn = file_based_input_fn_builder(
-            input_file=train_file,
+            input_file=train_file_path,
             seq_length=FLAGS.max_seq_length,
             is_training=True,
             drop_remainder=True)
-        estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps, hooks=[hook])
+        estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)  # hooks=[hook])
 
     if FLAGS.do_eval:
-        eval_examples = get_examples_ner(FLAGS.data_dir, FLAGS.eval_split)
-        tf.logging.info("Num of eval samples: {}".format(len(eval_examples)))
+        eval_file_path_base = "{}.len-{}.{}.tf_record".format(
+            spm_basename, FLAGS.max_seq_length, FLAGS.eval_split)
+        eval_file_path = os.path.join(FLAGS.output_dir, eval_file_path_base)
+        if not tf.gfile.Exists(eval_file_path) or FLAGS.overwrite_data:
+            process_conllu2tfrecord(FLAGS.data_dir, "eval", eval_file_path, sp)
+        #
+        # eval_examples = get_examples_ner(FLAGS.data_dir, FLAGS.eval_split)
+        # tf.logging.info("Num of eval samples: {}".format(len(eval_examples)))
 
         # TPU requires a fixed batch size for all batches, therefore the number
         # of examples must be a multiple of the batch size, or else examples
@@ -559,23 +735,20 @@ def main(_):
         while len(eval_examples) % FLAGS.eval_batch_size != 0:
             eval_examples.append(PaddingInputExample())
 
-        eval_file_base = "{}.len-{}.{}.tf_record".format(
-            spm_basename, FLAGS.max_seq_length, FLAGS.eval_split)
+        # if FLAGS.high_only:
+        #     eval_file_path_base = "high." + eval_file_path_base
+        # elif FLAGS.middle_only:
+        #     eval_file_path_base = "middle." + eval_file_path_base
 
-        if FLAGS.high_only:
-            eval_file_base = "high." + eval_file_base
-        elif FLAGS.middle_only:
-            eval_file_base = "middle." + eval_file_base
-
-        eval_file = os.path.join(FLAGS.output_dir, eval_file_base)
-        file_based_convert_examples_to_features_ner(
-            eval_examples, tokenize_fn, eval_file)
+        # eval_file_path = os.path.join(FLAGS.output_dir, eval_file_path_base)
+        # file_based_convert_examples_to_features_ner(
+        #     eval_examples, tokenize_fn, eval_file_path)
 
         assert len(eval_examples) % FLAGS.eval_batch_size == 0
         eval_steps = int(len(eval_examples) // FLAGS.eval_batch_size)
 
         eval_input_fn = file_based_input_fn_builder(
-            input_file=eval_file,
+            input_file=eval_file_path,
             seq_length=FLAGS.max_seq_length,
             is_training=False,
             drop_remainder=True)

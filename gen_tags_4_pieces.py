@@ -28,4 +28,4 @@ def gen_tags4piece(pieces, tokens, list_words, list_tags):
             else:
                 list_p_tags.append(tag)
     assert len(list_p_tags) == len(pieces)
-    return [0 if i == "O" else 1 for i in list_p_tags]
+    return list_p_tags
