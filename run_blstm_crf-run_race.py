@@ -40,6 +40,71 @@ import function_builder
 from classifier_utils import PaddingInputExample
 from prepro_utils import preprocess_text_ner
 
+ptb_ud_dict = {'#': 'SYM',
+               '$': 'SYM',
+               "''": 'PUNCT',
+               ',': 'PUNCT',
+               '-LRB-': 'PUNCT',
+               '-RRB-': 'PUNCT',
+               '.': 'PUNCT',
+               ':': 'PUNCT',
+               'AFX': 'ADJ',
+               'CC': 'CCONJ',
+               'CD': 'NUM',
+               'DT': 'DET',
+               'EX': 'PRON',
+               'FW': 'X',
+               'HYPH': 'PUNCT',
+               'IN': 'ADP',
+               'JJ': 'ADJ',
+               'JJR': 'ADJ',
+               'JJS': 'ADJ',
+               'LS': 'X',
+               'MD': 'VERB',
+               'NIL': 'X',
+               'NN': 'NOUN',
+               'NNP': 'PROPN',
+               'NNPS': 'PROPN',
+               'NNS': 'NOUN',
+               'PDT': 'DET',
+               'POS': 'PART',
+               'PRP': 'PRON',
+               'PRP$': 'DET',
+               'RB': 'ADV',
+               'RBR': 'ADV',
+               'RBS': 'ADV',
+               'RP': 'ADP',
+               'SYM': 'SYM',
+               'TO': 'PART',
+               'UH': 'INTJ',
+               'VB': 'VERB',
+               'VBD': 'VERB',
+               'VBG': 'VERB',
+               'VBN': 'VERB',
+               'VBP': 'VERB',
+               'VBZ': 'VERB',
+               'WDT': 'DET',
+               'WP': 'PRON',
+               'WP$': 'DET',
+               'WRB': 'ADV',
+               '``': 'PUNCT'}
+uds = ['ADJ',
+       'ADP',
+       'PUNCT',
+       'ADV',
+       'AUX',
+       'SYM',
+       'INTJ',
+       'CCONJ',
+       'X',
+       'NOUN',
+       'DET',
+       'PROPN',
+       'NUM',
+       'VERB',
+       'PART',
+       'PRON',
+       'SCONJ']
 # Model
 flags.DEFINE_string("model_config_path", default=None,
                     help="Model config path.")
@@ -202,6 +267,7 @@ def create_float_feature(values):
 
 
 def create_null_tfexample():
+    # this is for eval, padding to batchsize-long
     features = InputFeatures(
         input_ids=[0] * FLAGS.max_seq_length,
         input_mask=[1] * FLAGS.max_seq_length,
@@ -245,25 +311,27 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
                         wordlist.append(word.strip())
                         taglist.append(tag.strip())
                         to_write_len += 1
-                elif "gold_conll" in filename:
+                if "gold_conll" in filename:
                     if len(re.findall(r"/", re.split(r"\s+", line)[0])) > 2:
                         just_written = False
-                        ll = [i for i in re.split(r"\t", line) if len(i) > 0]
+                        ll = [i.strip() for i in re.split(r"\t", line) if len(i) > 0]
                         assert len(ll) == 10
-                        word = ll[3]
+                        word = re.sub(r"/", "", ll[3])
                         tag = ll[4]
+                        assert tag in ptb_ud_dict.keys()
                         assert not re.search(r"\s", word)
-                        assert not re.search(r"\s", tag)
-                        wordlist.append(word.strip())
-                        taglist.append(tag.strip())
-                        if ll[4] != "UH" and re.search(r"^[,\"'\-]$", word):
+                        wordlist.append(word)
+                        taglist.append(ptb_ud_dict[tag])
+                        if re.match(r"[,\"'\-.()\[\]]", rawtext[-1]):
                             rawtext = rawtext + word
-                            to_write_len += 1
-                        elif ll[4] != "UH":
-                            rawtext = rawtext + word + " "
-                            to_write_len += 1
+                        elif re.match(r"UH", tag):
+                            rawtext = rawtext
+                        elif re.search(r"[,\"'\-.()\[\]]", word):
+                            rawtext = rawtext + word
+                        elif re.search(r"\w", word):
+                            rawtext = rawtext + " " + word
 
-                elif re.match(r"^\n$", line) and (just_written is False) and to_write_len > 256:
+                if re.match(r"^\n$", line) and (just_written is False) and to_write_len > 256:
                     # pieces = encode_pieces(sp_model, rawtext, return_unicode=False, sample=False)
                     # tokens = [sp_model.PieceToId(piece) for piece in pieces]
 
@@ -667,9 +735,9 @@ def main(_):
     sp = spm.SentencePieceProcessor()
     sp.Load(FLAGS.spiece_model_file)
 
-    def tokenize_fn(text):
-        text = preprocess_text_ner(text, lower=FLAGS.uncased)
-        return encode_ids(sp, text)
+    # def tokenize_fn(text):
+    #     text = preprocess_text_ner(text, lower=FLAGS.uncased)
+    #     return encode_ids(sp, text)
 
     # TPU Configuration
     run_config = model_utils.configure_tpu(FLAGS)
@@ -732,8 +800,8 @@ def main(_):
         #
         # Modified in XL: We also adopt the same mechanism for GPUs.
 
-        while len(eval_examples) % FLAGS.eval_batch_size != 0:
-            eval_examples.append(PaddingInputExample())
+        # while len(eval_examples) % FLAGS.eval_batch_size != 0:
+        #     eval_examples.append(PaddingInputExample())
 
         # if FLAGS.high_only:
         #     eval_file_path_base = "high." + eval_file_path_base
@@ -744,8 +812,9 @@ def main(_):
         # file_based_convert_examples_to_features_ner(
         #     eval_examples, tokenize_fn, eval_file_path)
 
-        assert len(eval_examples) % FLAGS.eval_batch_size == 0
-        eval_steps = int(len(eval_examples) // FLAGS.eval_batch_size)
+        # assert len(eval_examples) % FLAGS.eval_batch_size == 0
+        # eval_steps = int(len(eval_examples) // FLAGS.eval_batch_size)
+        eval_steps = 8
 
         eval_input_fn = file_based_input_fn_builder(
             input_file=eval_file_path,
