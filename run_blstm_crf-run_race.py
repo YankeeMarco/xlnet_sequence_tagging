@@ -12,7 +12,7 @@ from os.path import join
 from absl import flags
 import os
 import re
-from gen_tags_4_pieces import gen_tags4piece
+from onotonotes_conll_copyfile import gen_tags4piece
 from tensorflow.python import debug as tf_debug
 
 os.chdir(os.path.expanduser("~") + "/Documents/xlnet_sequence_tagging")
@@ -287,15 +287,15 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
     cur_dir = os.path.join(ud_data_dir, set_flag)
     # print("********************######################cur_dir is {}".format(cur_dir))
     eval_batch_example_count = 0
+    rawtext = ""
+    wordlist = []
+    taglist = []
+    to_write_len = 0
+    just_written = False
     for filename in tf.gfile.ListDirectory(cur_dir):
         cur_path = os.path.join(cur_dir, filename)
         with tf.gfile.Open(cur_path) as f:
             line = f.readline()
-            rawtext = ""
-            wordlist = []
-            taglist = []
-            to_write_len = 0
-            just_written = False
             while line:
                 if ".conll" in filename:
                     if re.match(r"^# text = ", line):
@@ -314,22 +314,21 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
                 if "gold_conll" in filename:
                     if len(re.findall(r"/", re.split(r"\s+", line)[0])) > 2:
                         just_written = False
-                        ll = [i.strip() for i in re.split(r"\t", line) if len(i) > 0]
-                        assert len(ll) == 10
+                        ll = [i.strip() for i in re.split(r"\s+", line) if len(i) > 0]
+                        assert len(ll) == 12
                         word = re.sub(r"/", "", ll[3])
                         tag = ll[4]
-                        assert tag in ptb_ud_dict.keys()
-                        assert not re.search(r"\s", word)
-                        wordlist.append(word)
-                        taglist.append(ptb_ud_dict[tag])
-                        if re.match(r"[,\"'\-.()\[\]]", rawtext[-1]):
-                            rawtext = rawtext + word
-                        elif re.match(r"UH", tag):
-                            rawtext = rawtext
-                        elif re.search(r"[,\"'\-.()\[\]]", word):
-                            rawtext = rawtext + word
-                        elif re.search(r"\w", word):
-                            rawtext = rawtext + " " + word
+                        if tag not in ["XX", "UH"]:
+                            assert tag in ptb_ud_dict.keys()
+                            assert not re.search(r"\s", word)
+                            wordlist.append(word)
+                            taglist.append(ptb_ud_dict[tag])
+                            if re.match(r"[,\"'\-.()\[\]]", rawtext[-1]):
+                                rawtext = rawtext + word
+                            elif re.search(r"[,\"'\-.()\[\]]", word):
+                                rawtext = rawtext + word
+                            elif re.search(r"\w", word):
+                                rawtext = rawtext + " " + word
 
                 if re.match(r"^\n$", line) and (just_written is False) and to_write_len > 256:
                     # pieces = encode_pieces(sp_model, rawtext, return_unicode=False, sample=False)
