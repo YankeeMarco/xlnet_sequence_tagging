@@ -13,7 +13,7 @@ For example, run the scipts using:
 
 ## Where to find the dataset?
 [https://universaldependencies.org/](https://universaldependencies.org/)
-You can download UD dataset and copy the English files to data_dir
+You can download UD dataset and copy the English files to data_dir using the python script file:onotonotes_conll_copyfile.py (You may need to modify the paths)
 [https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO](https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO)
 You can use "find ./  -name *gold_conll" to find all the conll files and use xargs to copy them to data_dir
 
