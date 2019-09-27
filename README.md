@@ -4,10 +4,10 @@ It is not commercial use.
 Alarm: these codes are not finished.   
 Please be cautious to use.  
 **XLNet** For following tasks:  
-Noun extraction  
-Named entity extraction(NER)    
-Sequence labelling or sequence tagging/tagger    
-Part of speech tagging/tagger  
+* Sequence labelling/tagging/tagger    
+* Noun extraction  
+* Named entity extraction(NER)    
+* Part of speech tagging/tagger  
 
 ## How to use
 For example, run the scipts using:
