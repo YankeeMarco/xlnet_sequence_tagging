@@ -37,7 +37,6 @@ from data_utils import SEP_ID, VOCAB_SIZE, CLS_ID
 import model_utils
 import function_builder
 from classifier_utils import PaddingInputExample
-from prepro_utils import preprocess_text_ner
 
 ptb_ud_dict = {'#': 'SYM',
                '$': 'SYM',
@@ -282,6 +281,8 @@ def gen_sentence(ud_data_dir, set_flag, sp_model):
     just_yield = False
     # filename_counter = 0
     for filename in tf.gfile.ListDirectory(cur_dir):
+        # if not re.search(r"\.conll", filename):
+        #     continue
         # print(filename)
         # filename_counter += 1
         # print(filename_counter)
@@ -294,18 +295,28 @@ def gen_sentence(ud_data_dir, set_flag, sp_model):
                     wordlist = []
                     taglist = []
                     just_yield = False
+                    # if it has just yield one sentence, read a new line first!
+                    continue
                 if ".conll" in filename:
-                    if re.match(r"^# text = ", line):
-                        rawtext = re.sub(r"^# text = ", "", line)
-                    if len(re.findall(r"\t", line)) > 5:
-                        ll = [i for i in re.split(r"\t", line) if len(i) > 0]
+                    if len(re.findall(r"\t", line)) > 5 and re.search(r"^\d+", line):
+                        ll = [i for i in re.split(r"\t", line)]
                         assert len(ll) == 10
                         word = ll[1]
                         tag = ll[3]
-                        assert not re.search(r"\s", word)
-                        assert not re.search(r"\s", tag)
-                        wordlist.append(word.strip())
-                        taglist.append(tag.strip())
+                        if tag not in ["_"]:
+                            assert tag in uds
+                            assert not re.search(r"\s", word)
+                            assert not re.search(r"\s", tag)
+                            wordlist.append(word.strip())
+                            taglist.append(tag.strip())
+                            if not re.match(r"^'s$|^'ll$|^'re$|^n't$|^[,.!?{\-(\[@]$|^'d$", word):
+                                # but if pre-word is one of these, the word shoud attached with a back-slice to cut the last space
+                                if re.match(r"^[\-$@(\[{]$", wordlist[-1]):
+                                    rawtext = "{}".format(rawtext[:-1] + word + " ") if len(rawtext) > 0 else word
+                                else:
+                                    rawtext = rawtext + word + " "
+                            else:
+                                rawtext = rawtext[:-1] + word + " "
                 if "gold_conll" in filename:
                     if len(re.findall(r"/", re.split(r"\s+", line)[0])) > 2:
                         ll = [i.strip() for i in re.split(r"\s+", line) if len(i) > 0]
@@ -328,7 +339,7 @@ def gen_sentence(ud_data_dir, set_flag, sp_model):
                                 rawtext = rawtext[:-1] + word + " "
 
                 if re.match(r"^\n$", line) and not just_yield and len(taglist) > 0:
-                    just_yield = not just_yield
+                    just_yield = True
                     pieces, tokens = encode_ids(sp_model, rawtext, sample=False)
                     assert len(pieces) == len(tokens)
                     dic_sentence = dict(
@@ -358,10 +369,10 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
         try:
             sentence_dic = generator_sen.next()
         except Exception as _:
-            # drop the last rawtext of 2048 tokens ( it is OK or let's fix it later, now focusing on xlnet model)
+        #  drop the last rawtext of ${FLAGS.max_seq_length} tokens ( it is OK or let's fix it later, now focusing on xlnet model)
             break
 
-        if len(sentence_dic['tokens']) < (2048 - 3 - len(dic_concat['tokens'])):
+        if len(sentence_dic['tokens']) < (FLAGS.max_seq_length - 3 - len(dic_concat['tokens'])):
             dic_concat['tokens'].extend(sentence_dic['tokens'])
             dic_concat['pieces'].extend(sentence_dic['pieces'])
             dic_concat['wordlist'].extend(sentence_dic['wordlist'])
@@ -571,7 +582,6 @@ def get_model_fn():
 
 def encode_pieces(sp_model, text, return_unicode=True, sample=False):
     # return_unicode is used only for py2
-
     # note(zhiliny): in some systems, sentencepiece only accepts str for py2
     if six.PY2 and isinstance(text, unicode):
         text = text.encode('utf-8')

@@ -393,7 +393,7 @@ def get_ner_loss(FLAGS, features, is_training):  # , lengths):
         input_mask=inp_mask)
     embedded_chars = xlnet_model.get_sequence_output()
     embedding_dims = embedded_chars.shape[-1]
-    num_labels = 2
+    num_labels = 17
     with tf.variable_scope("logits", reuse=tf.AUTO_REUSE):
         W = tf.get_variable("W", shape=[embedding_dims, num_labels],
                             dtype=tf.float32, initializer=initializers.xavier_initializer())
