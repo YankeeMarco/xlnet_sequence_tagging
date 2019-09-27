@@ -1,13 +1,12 @@
 ## XLNet sequence tagging
 This project is built for tagging tasks that NLPer always  meets.   
-It is not commercial use.
-Alarm: these codes are not finished.   
-Please be cautious to use.  
-**XLNet** For following tasks:  
+Leverage **XLNet** For following tasks:  
 * Sequence labelling/tagging/tagger    
 * Noun extraction  
 * Named entity extraction(NER)    
-* Part of speech tagging/tagger  
+* Part of speech tagging/tagger
+
+Alarm: these codes are not finished yet. Be cautious to use.  
 
 ## How to use
 For example, run the scipts using:
@@ -20,12 +19,12 @@ python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py\
 --save_steps 2\     
 --output_dir /home/dev/Documents/xlnet_models/output_dir  
 
-## Where to find the dataset?
+## What about the dataset?
 [https://universaldependencies.org/](https://universaldependencies.org/)  
 You can use "find ./  -name *test/dev/train.conll" to find all the conll files and use xargs to copy them to data_dir  
 [https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO](https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO)  
 Just copy the English files to data_dir using the python script file:onotonotes_conll_copyfile.py (You may need to modify the paths)  
-##
+## Welcome PRs
 **PR**s are welcome! Please help with the developing project to enhance our NLP power!
 ## XNLet Introduction
 
