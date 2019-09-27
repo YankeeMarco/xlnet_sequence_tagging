@@ -11,13 +11,13 @@ Alarm: these codes are not finished yet. Be cautious to use.
 ## How to use
 For example, run the scipts using:
 ```shell
-python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py \   
-    --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json \  
-    --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model \  
-    --model_dir /home/dev/Documents/xlnet_models/finetuned/ \  
-    --data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/ \    
-    --do_train True \    
-    --save_steps 2 \     
+python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py \
+    --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json \
+    --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model \
+    --model_dir /home/dev/Documents/xlnet_models/finetuned/ \
+    --data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/ \
+    --do_train True \
+    --save_steps 2 \
     --output_dir /home/dev/Documents/xlnet_models/output_dir  
 ```
 ## What about the dataset?
