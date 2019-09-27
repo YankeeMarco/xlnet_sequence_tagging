@@ -280,7 +280,11 @@ def gen_sentence(ud_data_dir, set_flag, sp_model):
     wordlist = []
     taglist = []
     just_yield = False
+    # filename_counter = 0
     for filename in tf.gfile.ListDirectory(cur_dir):
+        # print(filename)
+        # filename_counter += 1
+        # print(filename_counter)
         cur_path = os.path.join(cur_dir, filename)
         with tf.gfile.Open(cur_path) as f:
             line = f.readline()
@@ -305,10 +309,10 @@ def gen_sentence(ud_data_dir, set_flag, sp_model):
                 if "gold_conll" in filename:
                     if len(re.findall(r"/", re.split(r"\s+", line)[0])) > 2:
                         ll = [i.strip() for i in re.split(r"\s+", line) if len(i) > 0]
-
                         word = re.sub(r"^/", "", ll[3])
                         tag = ll[4]
-                        if tag not in ["XX", "UH", "``", "''", ]:
+                        if tag not in ["XX", "UH", "``", "''", "NFP", "ADD", "*"]:
+                            # if tag in ptb_ud_dict.keys():
                             assert tag in ptb_ud_dict.keys()
                             assert not re.search(r"\s", word)
                             wordlist.append(word)
@@ -420,7 +424,7 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
             features["input_mask"] = create_float_feature(cur_input_mask)
             features["segment_ids"] = create_int_feature(segment_ids)
             features["label_ids"] = create_int_feature(cur_label_ids)
-            features["is_real_example"] = create_int_feature([int(True if FLAGS.do_train else False)])
+            features["is_real_example"] = create_int_feature([True])
             tf_example = tf.train.Example(features=tf.train.Features(feature=features))
             writer.write(tf_example.SerializeToString())
             if set_flag == "eval":
@@ -430,11 +434,6 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
         tf_example = create_null_tfexample()
         for i in range(FLAGS.eval_batch_size - eval_batch_example_count % FLAGS.eval_batch_size):
             writer.write(tf_example.SerializeToString())
-    # if set_flag == "train" and eval_batch_example_count % FLAGS.train_batch_size != 0:
-    #     tf_example = create_null_tfexample()
-    #     for i in range(FLAGS.train_batch_size - eval_batch_example_count % FLAGS.train_batch_size):
-    #         writer.write(tf_example.SerializeToString())
-
     writer.close()
 
 
