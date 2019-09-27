@@ -12,7 +12,6 @@ from os.path import join
 from absl import flags
 import os
 import re
-from onotonotes_conll_copyfile import gen_tags4piece
 from tensorflow.python import debug as tf_debug
 
 os.chdir(os.path.expanduser("~") + "/Documents/xlnet_sequence_tagging")
@@ -191,7 +190,7 @@ flags.DEFINE_integer("eval_batch_size", default=32,
                      help="Batch size for evaluation.")
 
 # Data config
-flags.DEFINE_integer("max_seq_length", default=512,
+flags.DEFINE_integer("max_seq_length", default=2048,
                      help="Max length for the paragraph.")
 flags.DEFINE_integer("max_qa_length", default=128,
                      help="Max length for the concatenated question and answer.")
@@ -240,17 +239,6 @@ class InputFeatures(object):
         self.is_real_example = is_real_example
 
 
-class InputExampleNer(object):
-    """sentence: python list of words
-        tags: python list of tags
-    """
-
-    def __init__(self, rawtext, wordlist, taglist):
-        self.rawtext = rawtext
-        self.wordlist = wordlist
-        self.tags = taglist
-
-
 def gen_piece(pieces, tokens):
     for pie in zip(pieces, tokens):
         yield pie
@@ -267,7 +255,7 @@ def create_float_feature(values):
 
 
 def create_null_tfexample():
-    # this is for eval, padding to batchsize-long
+    # this is for evaluation, padding to batchsize-long
     features = InputFeatures(
         input_ids=[0] * FLAGS.max_seq_length,
         input_mask=[1] * FLAGS.max_seq_length,
@@ -278,30 +266,34 @@ def create_null_tfexample():
     return tf_example
 
 
-def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
-    if tf.gfile.Exists(tfrecord_path) and not FLAGS.overwrite_data:
-        return
-    tf.logging.info("Start writing tfrecord %s.", tfrecord_path)
-    writer = tf.python_io.TFRecordWriter(tfrecord_path)
-    # 直接把UD conll files数据转化为raw text， words list ， tag list的形式
+def gen_sentence(ud_data_dir, set_flag, sp_model):
+    """
+    processing the text files from conllu format to sentence generator
+    :param ud_data_dir: the data dir of train/eval dirs
+    :param set_flag: the "train"/"eval" dir flag
+    :param sp_model: the sentencepieces model
+    :return: dict of tokens, ids, text, tags etc.
+    """
     cur_dir = os.path.join(ud_data_dir, set_flag)
-    # print("********************######################cur_dir is {}".format(cur_dir))
-    eval_batch_example_count = 0
+    # print("********************  cur_dir is {}".format(cur_dir))
     rawtext = ""
     wordlist = []
     taglist = []
-    to_write_len = 0
-    just_written = False
+    just_yield = False
     for filename in tf.gfile.ListDirectory(cur_dir):
         cur_path = os.path.join(cur_dir, filename)
         with tf.gfile.Open(cur_path) as f:
             line = f.readline()
             while line:
+                if just_yield:
+                    rawtext = ""
+                    wordlist = []
+                    taglist = []
+                    just_yield = False
                 if ".conll" in filename:
                     if re.match(r"^# text = ", line):
                         rawtext = re.sub(r"^# text = ", "", line)
                     if len(re.findall(r"\t", line)) > 5:
-                        just_written = False
                         ll = [i for i in re.split(r"\t", line) if len(i) > 0]
                         assert len(ll) == 10
                         word = ll[1]
@@ -310,107 +302,130 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
                         assert not re.search(r"\s", tag)
                         wordlist.append(word.strip())
                         taglist.append(tag.strip())
-                        to_write_len += 1
                 if "gold_conll" in filename:
                     if len(re.findall(r"/", re.split(r"\s+", line)[0])) > 2:
-                        just_written = False
                         ll = [i.strip() for i in re.split(r"\s+", line) if len(i) > 0]
-                        assert len(ll) == 12
-                        word = re.sub(r"/", "", ll[3])
+
+                        word = re.sub(r"^/", "", ll[3])
                         tag = ll[4]
-                        if tag not in ["XX", "UH"]:
+                        if tag not in ["XX", "UH", "``", "''", ]:
                             assert tag in ptb_ud_dict.keys()
                             assert not re.search(r"\s", word)
                             wordlist.append(word)
                             taglist.append(ptb_ud_dict[tag])
-                            if re.match(r"[,\"'\-.()\[\]]", rawtext[-1]):
-                                rawtext = rawtext + word
-                            elif re.search(r"[,\"'\-.()\[\]]", word):
-                                rawtext = rawtext + word
-                            elif re.search(r"\w", word):
-                                rawtext = rawtext + " " + word
-
-                if re.match(r"^\n$", line) and (just_written is False) and to_write_len > 256:
-                    # pieces = encode_pieces(sp_model, rawtext, return_unicode=False, sample=False)
-                    # tokens = [sp_model.PieceToId(piece) for piece in pieces]
-
-                    pieces, tokens = encode_ids(sp_model, rawtext, sample=False)
-                    assert len(pieces) < 508, "the length of pieces sp_model output is longer than 508"
-                    gen_p = gen_piece(pieces, tokens)
-                    p_tag_list = []
-                    for (word, tag) in zip(wordlist, taglist):
-                        concat_piece = ""
-                        # print("\"" + word + "\"")
-                        while concat_piece != word:
-                            try:
-                                piece, token = gen_p.next()
-                            except Exception as _:
-                                break
-                            # print("piece: |{}|".format(piece))
-                            concat_piece += re.sub(r"▁", "", piece)
-                            if concat_piece == word:
-                                # print("concat_piece:\"" + concat_piece + "\"")
-                                p_tag_list.append(tag)
-                                break
+                            # normal word to attach or concat, eg., 'rich'; firstly, the coming word will be attached withou pre-space
+                            if not re.match(r"^'s$|^'ll$|^'re$|^n't$|^[,.!?{\-(\[@]$|^'d$", word):
+                                # but if pre-word is one of these, the word shoud attached with a back-slice to cut the last space
+                                if re.match(r"^[\-$@(\[{]$", wordlist[-1]):
+                                    rawtext = "{}".format(rawtext[:-1] + word + " ") if len(rawtext) > 0 else word
+                                else:
+                                    rawtext = rawtext + word + " "
                             else:
-                                p_tag_list.append(tag)
-                    assert len(p_tag_list) == len(pieces)
-                    input_ids, input_mask, all_seg_ids, all_label_id = [], [], [], []
+                                rawtext = rawtext[:-1] + word + " "
 
-                    segment_ids = [SEG_ID_A] * len(tokens)
-
-                    tokens.append(SEP_ID)
-                    all_label_id.append(SEP_ID)
-                    segment_ids.append(SEG_ID_A)
-
-                    tokens.append(SEP_ID)
-                    all_label_id.append(SEP_ID)
-                    segment_ids.append(SEG_ID_B)
-
-                    tokens.append(CLS_ID)
-                    all_label_id.append(CLS_ID)
-                    segment_ids.append(SEG_ID_CLS)
-
-                    cur_input_ids = tokens
-                    cur_input_mask = [0] * len(cur_input_ids)
-                    cur_label_ids = all_label_id
-                    if len(cur_input_ids) < FLAGS.max_seq_length:
-                        delta_len = FLAGS.max_seq_length - len(cur_input_ids)
-                        cur_input_ids = [0] * delta_len + cur_input_ids
-                        cur_input_mask = [1] * delta_len + cur_input_mask
-                        cur_label_ids = [0] * delta_len + cur_label_ids
-                        segment_ids = [SEG_ID_PAD] * delta_len + segment_ids
-
-                    assert len(cur_input_ids) == FLAGS.max_seq_length
-                    assert len(cur_input_mask) == FLAGS.max_seq_length
-                    assert len(segment_ids) == FLAGS.max_seq_length
-                    assert len(cur_label_ids) == FLAGS.max_seq_length
-
-                    input_ids.extend(cur_input_ids)
-                    input_mask.extend(cur_input_mask)
-                    all_seg_ids.extend(segment_ids)
-
-                    feature = InputFeatures(
-                        input_ids=input_ids,
-                        input_mask=input_mask,
-                        segment_ids=all_seg_ids,
-                        label_id=cur_label_ids)
-                    features = collections.OrderedDict()
-                    features["input_ids"] = create_int_feature(feature.input_ids)
-                    features["input_mask"] = create_float_feature(feature.input_mask)
-                    features["segment_ids"] = create_int_feature(feature.segment_ids)
-                    features["label_ids"] = create_int_feature(feature.label_id)
-                    features["is_real_example"] = create_int_feature([int(feature.is_real_example)])
-                    tf_example = tf.train.Example(features=tf.train.Features(feature=features))
-                    writer.write(tf_example.SerializeToString())
-                    if set_flag == "eval":
-                        eval_batch_example_count += 1
-                    wordlist = []
-                    taglist = []
-                    to_write_len = 0
-                    rawtext = ""
-                    just_written = not just_written
+                if re.match(r"^\n$", line) and not just_yield and len(taglist) > 0:
+                    just_yield = not just_yield
+                    pieces, tokens = encode_ids(sp_model, rawtext, sample=False)
+                    assert len(pieces) == len(tokens)
+                    dic_sentence = dict(
+                        rawtext=rawtext,
+                        wordlist=wordlist,
+                        taglist=taglist,
+                        pieces=pieces,
+                        tokens=tokens
+                    )
+                    yield dic_sentence
                 line = f.readline()
+
+
+def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
+    if tf.gfile.Exists(tfrecord_path) and not FLAGS.overwrite_data:
+        return
+    tf.logging.info("Start writing tfrecord %s.", tfrecord_path)
+    writer = tf.python_io.TFRecordWriter(tfrecord_path)
+    eval_batch_example_count = 0
+    dic_concat = dict(rawtext="",
+                      wordlist=[],
+                      taglist=[],
+                      pieces=[],
+                      tokens=[])
+    generator_sen = gen_sentence(ud_data_dir, set_flag, sp_model)
+    while True:
+        try:
+            sentence_dic = generator_sen.next()
+        except Exception as _:
+            break
+
+        if len(sentence_dic['tokens']) < (2048 - 3 - len(dic_concat['tokens'])):
+            dic_concat['tokens'].extend(sentence_dic['tokens'])
+            dic_concat['pieces'].extend(sentence_dic['pieces'])
+            dic_concat['wordlist'].extend(sentence_dic['wordlist'])
+            dic_concat['taglist'].extend(sentence_dic['taglist'])
+            dic_concat['rawtext'] += sentence_dic['rawtext']
+        else:
+            pieces = dic_concat['pieces']
+            tokens = dic_concat['tokens']
+            wordlist = dic_concat['wordlist']
+            taglist = dic_concat['taglist']
+            p_tag_list = []
+            gen_p = gen_piece(pieces, tokens)
+            for (word, tag) in zip(wordlist, taglist):
+                concat_piece = ""
+                # print("\"" + word + "\"")
+                while concat_piece != word:
+                    try:
+                        piece, token = gen_p.next()
+                    except Exception as _:
+                        break
+                    # print("piece: |{}|".format(piece))
+                    concat_piece += re.sub(r"▁", "", piece)
+                    if concat_piece == word:
+                        # print("concat_piece:\"" + concat_piece + "\"")
+                        p_tag_list.append(uds.index(tag) + 10)
+                        break
+                    else:
+                        p_tag_list.append(uds.index(tag) + 10)
+            assert len(p_tag_list) == len(pieces)
+            all_label_id = p_tag_list
+            segment_ids = [SEG_ID_A] * len(tokens)
+            tokens.append(SEP_ID)
+            all_label_id.append(SEP_ID)
+            segment_ids.append(SEG_ID_A)
+
+            tokens.append(SEP_ID)
+            all_label_id.append(SEP_ID)
+            segment_ids.append(SEG_ID_B)
+
+            tokens.append(CLS_ID)
+            all_label_id.append(CLS_ID)
+            segment_ids.append(SEG_ID_CLS)
+
+            cur_input_ids = tokens
+            cur_input_mask = [0] * len(cur_input_ids)
+            cur_label_ids = all_label_id
+            if len(cur_input_ids) < FLAGS.max_seq_length:
+                delta_len = FLAGS.max_seq_length - len(cur_input_ids)
+                cur_input_ids = [0] * delta_len + cur_input_ids
+                cur_input_mask = [1] * delta_len + cur_input_mask
+                segment_ids = [SEG_ID_PAD] * delta_len + segment_ids
+                cur_label_ids = [0] * delta_len + cur_label_ids
+
+            assert len(cur_input_ids) == FLAGS.max_seq_length
+            assert len(cur_input_mask) == FLAGS.max_seq_length
+            assert len(segment_ids) == FLAGS.max_seq_length
+            assert len(cur_label_ids) == FLAGS.max_seq_length
+
+            features = collections.OrderedDict()
+            features["input_ids"] = create_int_feature(cur_input_ids)
+            features["input_mask"] = create_float_feature(cur_input_mask)
+            features["segment_ids"] = create_int_feature(segment_ids)
+            features["label_ids"] = create_int_feature(cur_label_ids)
+            features["is_real_example"] = create_int_feature([int(True if FLAGS.do_train else False)])
+            tf_example = tf.train.Example(features=tf.train.Features(feature=features))
+            writer.write(tf_example.SerializeToString())
+            if set_flag == "eval":
+                eval_batch_example_count += 1
+            dic_concat = sentence_dic
     if set_flag == "eval" and eval_batch_example_count % FLAGS.eval_batch_size != 0:
         tf_example = create_null_tfexample()
         for i in range(FLAGS.eval_batch_size - eval_batch_example_count % FLAGS.eval_batch_size):
@@ -420,100 +435,6 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
     #     for i in range(FLAGS.train_batch_size - eval_batch_example_count % FLAGS.train_batch_size):
     #         writer.write(tf_example.SerializeToString())
 
-    writer.close()
-
-
-def convert_single_example_ner(example, tokenize_fn):
-    """Converts a single `InputExample` into a single `InputFeatures`."""
-
-    if isinstance(example, PaddingInputExample):
-        return InputFeatures(
-            input_ids=[0] * FLAGS.max_seq_length,
-            input_mask=[1] * FLAGS.max_seq_length,
-            segment_ids=[0] * FLAGS.max_seq_length,
-            label_id=[0] * FLAGS.max_seq_length,
-            is_real_example=False)
-
-    input_ids, input_mask, all_seg_ids, all_label_id = [], [], [], []
-    pieces, tokens = tokenize_fn(example.sentence)
-    all_label_id = gen_tags4piece(pieces, tokens, [i.strip() for i in re.split(r"\s+", example.sentence) if len(i) > 0],
-                                  [i.strip() for i in re.split(r"\s+", example.tags) if len(i) > 0])
-    # if random.randrange(0, 100) == 55:
-    for word, tag in zip(pieces, all_label_id):
-        print(word + "\t" + tag + "\n")
-
-    segment_ids = [SEG_ID_A] * len(tokens)
-
-    tokens.append(SEP_ID)
-    all_label_id.append(SEP_ID)
-    segment_ids.append(SEG_ID_A)
-
-    tokens.append(SEP_ID)
-    all_label_id.append(SEP_ID)
-    segment_ids.append(SEG_ID_B)
-
-    tokens.append(CLS_ID)
-    all_label_id.append(CLS_ID)
-    segment_ids.append(SEG_ID_CLS)
-
-    cur_input_ids = tokens
-    cur_input_mask = [0] * len(cur_input_ids)
-    cur_label_ids = all_label_id
-    if len(cur_input_ids) < FLAGS.max_seq_length:
-        delta_len = FLAGS.max_seq_length - len(cur_input_ids)
-        cur_input_ids = [0] * delta_len + cur_input_ids
-        cur_input_mask = [1] * delta_len + cur_input_mask
-        cur_label_ids = [0] * delta_len + cur_label_ids
-        segment_ids = [SEG_ID_PAD] * delta_len + segment_ids
-
-    assert len(cur_input_ids) == FLAGS.max_seq_length
-    assert len(cur_input_mask) == FLAGS.max_seq_length
-    assert len(segment_ids) == FLAGS.max_seq_length
-    assert len(cur_label_ids) == FLAGS.max_seq_length
-
-    input_ids.extend(cur_input_ids)
-    input_mask.extend(cur_input_mask)
-    all_seg_ids.extend(segment_ids)
-
-    feature = InputFeatures(
-        input_ids=input_ids,
-        input_mask=input_mask,
-        segment_ids=all_seg_ids,
-        label_id=cur_label_ids)
-    return feature
-
-
-def file_based_convert_examples_to_features_ner(examples, tokenize_fn, output_file):
-    if tf.gfile.Exists(output_file) and not FLAGS.overwrite_data:
-        return
-
-    tf.logging.info("Start writing tfrecord %s.", output_file)
-    writer = tf.python_io.TFRecordWriter(output_file)
-
-    for ex_index, example in enumerate(examples):
-        if ex_index % 10000 == 0:
-            tf.logging.info("Writing example %d of %d" % (ex_index, len(examples)))
-
-        feature = convert_single_example_ner(example, tokenize_fn)
-
-        def create_int_feature(values):
-            f = tf.train.Feature(int64_list=tf.train.Int64List(value=values))
-            return f
-
-        def create_float_feature(values):
-            f = tf.train.Feature(float_list=tf.train.FloatList(value=values))
-            return f
-
-        features = collections.OrderedDict()
-        features["input_ids"] = create_int_feature(feature.input_ids)
-        features["input_mask"] = create_float_feature(feature.input_mask)
-        features["segment_ids"] = create_int_feature(feature.segment_ids)
-        features["label_ids"] = create_int_feature(feature.label_id)
-        features["is_real_example"] = create_int_feature(
-            [int(feature.is_real_example)])
-
-        tf_example = tf.train.Example(features=tf.train.Features(feature=features))
-        writer.write(tf_example.SerializeToString())
     writer.close()
 
 
@@ -692,31 +613,6 @@ def encode_ids(sp_model, text, sample=False):
     return pieces, ids
 
 
-def get_examples_ner(data_dir, set_flag):
-    examples = []
-
-    cur_dir = os.path.join(data_dir, set_flag)
-    # print("********************######################cur_dir is {}".format(cur_dir))
-    for filename in tf.gfile.ListDirectory(cur_dir):
-        cur_path = os.path.join(cur_dir, filename)
-        with tf.gfile.Open(cur_path) as f:
-            line = f.readline()
-            pieces = []
-            tags = []
-            while line:
-                if re.match(r"^\n$", line):
-                    if len(pieces) > 0:
-                        examples.append(InputExampleNer(" ".join(pieces), " ".join(tags)))
-                        pieces = []
-                        tags = []
-                else:
-                    word, tag = re.split(r"\t", line)
-                    pieces.append(word)
-                    tags.append(tag)
-                line = f.readline()
-    return examples
-
-
 def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -760,7 +656,7 @@ def main(_):
             config=run_config)
 
     if FLAGS.do_train:
-        train_file_path_base = "{}.len-{}.train.tf_record".format(
+        train_file_path_base = "CRF{}.len-{}.train.tf_record".format(
             spm_basename, FLAGS.max_seq_length)
         train_file_path = os.path.join(FLAGS.output_dir, train_file_path_base)
         if not tf.gfile.Exists(train_file_path) or FLAGS.overwrite_data:
@@ -782,7 +678,7 @@ def main(_):
         estimator.train(input_fn=train_input_fn, max_steps=FLAGS.train_steps)  # hooks=[hook])
 
     if FLAGS.do_eval:
-        eval_file_path_base = "{}.len-{}.{}.tf_record".format(
+        eval_file_path_base = "CRF{}.len-{}.{}.tf_record".format(
             spm_basename, FLAGS.max_seq_length, FLAGS.eval_split)
         eval_file_path = os.path.join(FLAGS.output_dir, eval_file_path_base)
         if not tf.gfile.Exists(eval_file_path) or FLAGS.overwrite_data:

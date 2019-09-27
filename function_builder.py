@@ -433,3 +433,43 @@ def get_ner_loss(FLAGS, features, is_training):  # , lengths):
             tf.nn.log_softmax(logits) * one_hot_target, -1)
         total_loss = tf.reduce_mean(per_example_loss)
     return total_loss, per_example_loss, logits
+
+
+def get_race_loss(FLAGS, features, is_training):
+    """Loss for downstream multi-choice QA tasks such as RACE."""
+
+    bsz_per_core = tf.shape(features["input_ids"])[0]
+
+    def _transform_features(feature):
+        out = tf.reshape(feature, [bsz_per_core, 4, -1])
+        out = tf.transpose(out, [2, 0, 1])
+        out = tf.reshape(out, [-1, bsz_per_core * 4])
+        return out
+
+    inp = _transform_features(features["input_ids"])
+    seg_id = _transform_features(features["segment_ids"])
+    inp_mask = _transform_features(features["input_mask"])
+    label = tf.reshape(features["label_ids"], [bsz_per_core])
+
+    xlnet_config = xlnet.XLNetConfig(json_path=FLAGS.model_config_path)
+    run_config = xlnet.create_run_config(is_training, True, FLAGS)
+
+    xlnet_model = xlnet.XLNetModel(
+        xlnet_config=xlnet_config,
+        run_config=run_config,
+        input_ids=inp,
+        seg_ids=seg_id,
+        input_mask=inp_mask)
+    summary = xlnet_model.get_pooled_out(FLAGS.summary_type, FLAGS.use_summ_proj)
+
+    with tf.variable_scope("logits"):
+        logits = tf.layers.dense(summary, 1,
+                                 kernel_initializer=xlnet_model.get_initializer())
+        logits = tf.reshape(logits, [bsz_per_core, 4])
+
+        one_hot_target = tf.one_hot(label, 4)
+        per_example_loss = -tf.reduce_sum(
+            tf.nn.log_softmax(logits) * one_hot_target, -1)
+        total_loss = tf.reduce_mean(per_example_loss)
+
+    return total_loss, per_example_loss, logits
