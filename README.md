@@ -1,6 +1,7 @@
 ## XLNet sequence tagging
+This project is built for a basical tasks that NLPer always  meets. It is not commercial.
 Alarm: these codes are not finished. Please be cautious to use.
-Using **XLNet** For following tasks:
+Adapt **XLNet** For following tasks:
 Noun extraction ---
 Named entity extraction(NER) ---
 Sequence labelling or sequence tagging/tagger---
@@ -13,10 +14,10 @@ For example, run the scipts using:
 
 ## Where to find the dataset?
 [https://universaldependencies.org/](https://universaldependencies.org/)
-You can download UD dataset and copy the English files to data_dir using the python script file:onotonotes_conll_copyfile.py (You may need to modify the paths)
+You can use "find ./  -name *test/dev/train.conll" to find all the conll files and use xargs to copy them to data_dir
 [https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO](https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO)
-You can use "find ./  -name *gold_conll" to find all the conll files and use xargs to copy them to data_dir
-
+Just copy the English files to data_dir using the python script file:onotonotes_conll_copyfile.py (You may need to modify the paths)
+**PR**s are welcome! Please help with the developing project to enhance our NLP power!
 ## XNLet Introduction
 
 **XLNet** is a new unsupervised language representation learning method based on a novel generalized permutation language modeling objective. Additionally, XLNet employs [Transformer-XL](https://arxiv.org/abs/1901.02860) as the backbone model, exhibiting excellent performance for language tasks involving long context. Overall, XLNet achieves state-of-the-art (SOTA) results on various downstream language tasks including question answering, natural language inference, sentiment analysis, and document ranking.
