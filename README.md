@@ -11,22 +11,24 @@ Alarm: these codes are not finished yet. Be cautious to use.
 ## How to use
 For example, run the scipts using:
 ```shell
-python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py\   
-    --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json\  
-    --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model\  
-    --model_dir /home/dev/Documents/xlnet_models/finetuned/\  
-    --data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/\    
-    --do_train True\    
-    --save_steps 2\     
+python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py \   
+    --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json \  
+    --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model \  
+    --model_dir /home/dev/Documents/xlnet_models/finetuned/ \  
+    --data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/ \    
+    --do_train True \    
+    --save_steps 2 \     
     --output_dir /home/dev/Documents/xlnet_models/output_dir  
 ```
 ## What about the dataset?
 [https://universaldependencies.org/](https://universaldependencies.org/)  
 You can use "find ./  -name *test/dev/train.conll" to find all the conll files and use xargs to copy them to data_dir  
 [https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO](https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO)  
-Just copy the English files to data_dir using the python script file:onotonotes_conll_copyfile.py (You may need to modify the paths)  
+Just copy the English files to data_dir using the python script file:onotonotes_conll_copyfile.py 
+(You may need to modify the paths)  
 ## Welcome PRs
-**PR**s are welcome! Please help with the developing project to enhance our NLP power!
+**PR**s are welcome! Please help with the developing project to enhance our NLP power!  
+  
 ## XNLet Introduction
 
 **XLNet** is a new unsupervised language representation learning method based on a novel generalized permutation language modeling objective. Additionally, XLNet employs [Transformer-XL](https://arxiv.org/abs/1901.02860) as the backbone model, exhibiting excellent performance for language tasks involving long context. Overall, XLNet achieves state-of-the-art (SOTA) results on various downstream language tasks including question answering, natural language inference, sentiment analysis, and document ranking.
