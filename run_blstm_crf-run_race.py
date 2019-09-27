@@ -358,6 +358,7 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
         try:
             sentence_dic = generator_sen.next()
         except Exception as _:
+            # drop the last rawtext of 2048 tokens ( it is OK or let's fix it later, now focusing on xlnet model)
             break
 
         if len(sentence_dic['tokens']) < (2048 - 3 - len(dic_concat['tokens'])):
