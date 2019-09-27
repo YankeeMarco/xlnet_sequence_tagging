@@ -1,16 +1,24 @@
 ## XLNet sequence tagging
-This project is built for a basical tasks that NLPer always  meets.   It is not commercial.
-Alarm: these codes are not finished.   Please be cautious to use.
-Adapt **XLNet** For following tasks:  
-Noun extraction ---  
-Named entity extraction(NER) ---  
-Sequence labelling or sequence tagging/tagger---  
+This project is built for tagging tasks that NLPer always  meets.   
+It is not commercial use.
+Alarm: these codes are not finished.   
+Please be cautious to use.  
+**XLNet** For following tasks:  
+Noun extraction  
+Named entity extraction(NER)    
+Sequence labelling or sequence tagging/tagger    
 Part of speech tagging/tagger  
 
-Using the xlnet_data directory as sequence labelling dataset
-
+## How to use
 For example, run the scipts using:
-/home/dev/.conda/envs/tf13py2/bin/python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py  --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json  --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model --model_dir /home/dev/Documents/xlnet_models/finetuned/ --data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/  --do_train True --save_steps 2 --output_dir /home/dev/Documents/xlnet_models/output_dir
+python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py\   
+--model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json\  
+--spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model\  
+--model_dir /home/dev/Documents/xlnet_models/finetuned/\  
+--data_dir /home/dev/Documents/udify-master/data/ud/xlnet_data/\    
+--do_train True\    
+--save_steps 2\     
+--output_dir /home/dev/Documents/xlnet_models/output_dir  
 
 ## Where to find the dataset?
 [https://universaldependencies.org/](https://universaldependencies.org/)  
