@@ -29,6 +29,11 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import matthews_corrcoef, f1_score
 
 import absl.logging as _logging  # pylint: disable=unused-import
+# os.environ.setdefault(key='BASE_DIR', value='gs://bucket20190704/xlnet_models/xlnet_cased_L-12_H-768_A-12')
+# os.environ.setdefault(key='GS_ROOT', value='gs://bucket20190704/')
+# import pydevd_pycharm
+# pydevd_pycharm.settrace('127.0.0.1', port=12345, stdoutToServer=True, stderrToServer=True)
+
 
 import tensorflow as tf
 import sentencepiece as spm
@@ -369,7 +374,7 @@ def process_conllu2tfrecord(ud_data_dir, set_flag, tfrecord_path, sp_model):
         try:
             sentence_dic = generator_sen.next()
         except Exception as _:
-        #  drop the last rawtext of ${FLAGS.max_seq_length} tokens ( it is OK or let's fix it later, now focusing on xlnet model)
+            #  drop the last rawtext of ${FLAGS.max_seq_length} tokens ( it is OK or let's fix it later, now focusing on xlnet model)
             break
 
         if len(sentence_dic['tokens']) < (FLAGS.max_seq_length - 3 - len(dic_concat['tokens'])):
@@ -479,6 +484,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training,
 
     def input_fn(params):
         """The actual input function."""
+        batch_size = int()
         if FLAGS.use_tpu:
             batch_size = params["batch_size"]
         elif is_training:

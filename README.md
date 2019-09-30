@@ -1,12 +1,12 @@
 ## XLNet sequence tagging
-This project is built for tagging tasks that NLPer always  meets.   
-Leverage **XLNet** For following tasks:  
+We are developing this project for tagging tasks that NLPer always meets.   
+Use **XLNet** for following tasks  
 * Sequence labelling/tagging/tagger    
 * Noun extraction  
 * Named entity extraction(NER)    
 * Part of speech tagging/tagger
 
-Alarm: these codes are not finished yet. Be cautious to use.  
+Alarm, these codes are not finished yet. Be cautious to use.  
 
 ## How to use
 For example, run the scipts using:
