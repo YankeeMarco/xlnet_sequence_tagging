@@ -1,4 +1,4 @@
-## XLNet sequence tagging
+## Main tasks
 We are developing this project for tagging tasks that NLPer always meets.   
 Use **XLNet** for following tasks  
 * Sequence labelling/tagging/tagger    
@@ -8,10 +8,11 @@ Use **XLNet** for following tasks
 
 Alarm, these codes are not finished yet. Be cautious to use.  
 
-## How to use
+## Train on TPU
 For example, run the scipts using:
 ```shell
 python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py \
+    --use_tpu \
     --model_config_path /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/xlnet_config.json \
     --spiece_model_file /home/dev/Documents/xlnet_models/xlnet_cased_L-12_H-768_A-12/spiece.model \
     --model_dir /home/dev/Documents/xlnet_models/finetuned/ \
@@ -20,7 +21,7 @@ python2.7  /home/dev/Documents/xlnet-master/run_blstm_crf-run_race.py \
     --save_steps 2 \
     --output_dir /home/dev/Documents/xlnet_models/output_dir  
 ```
-## What about the dataset?
+## The dataset and preprocessing
 [https://universaldependencies.org/](https://universaldependencies.org/)  
 You can use "find ./  -name *test/dev/train.conll" to find all the conll files and use xargs to copy them to data_dir  
 [https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO](https://github.com/yuchenlin/OntoNotes-5.0-NER-BIO)  
